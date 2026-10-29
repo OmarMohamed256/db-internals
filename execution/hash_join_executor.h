@@ -44,16 +44,6 @@ public:
      * Initializes inner_child_ for streaming probe.
      */
     void Init() override {
-        // TODO(student):
-        // 1. Clear hash_table_ to support re-initialization.
-        // 2. Initialize outer_child_->Init().
-        // 3. Loop pulling all rows from outer_child_:
-        //      UserRow user;
-        //      RID rid;
-        //      while (outer_child_->Next(&user, &rid)) {
-        //          hash_table_[user.id] = user;
-        //      }
-        // 4. Initialize inner_child_->Init() so probe phase is ready to stream.
         hash_table_.clear();
         outer_child_->Init();
         UserRow user;
@@ -72,14 +62,6 @@ public:
      * @return true if a joined record was produced, false if probe relation reached EOF.
      */
     bool Next(JoinedUserOrderRow *out_row, RID *out_rid) override {
-        // TODO(student):
-        // 1. Loop while inner_child_->Next(&curr_order_, &curr_order_rid_):
-        //    a. Look up curr_order_.user_id in hash_table_.
-        //    b. If found:
-        //         *out_row = JoinedUserOrderRow(it->second, curr_order_);
-        //         if (out_rid != nullptr) *out_rid = curr_order_rid_;
-        //         return true;
-        // 2. When inner_child_ is exhausted, return false.
         while (inner_child_->Next(&curr_order_, &curr_order_rid_)) {
             auto it = hash_table_.find(curr_order_.user_id);
             if (it != hash_table_.end()) {

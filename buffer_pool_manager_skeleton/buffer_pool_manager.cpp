@@ -28,7 +28,7 @@ void BufferPoolManager::FetchPageAsync(page_id_t page_id, std::function<void(Pag
         target_page->pin_count_++;
         replacer_->RecordAccess(frame_id);
         replacer_->Pin(frame_id);
-        
+
         lock.unlock();
         callback(target_page);
         return;
@@ -49,7 +49,7 @@ void BufferPoolManager::FetchPageAsync(page_id_t page_id, std::function<void(Pag
     } else if (replacer_->Victim(&frame_id)) {
         Page* old_page = &pages_[frame_id];
         page_id_t old_page_id = old_page->GetPageId();
-        
+
         if (old_page->IsDirty()) {
             // Asynchronously write dirty victim, then read new page
             page_table_.erase(old_page_id);
@@ -128,7 +128,7 @@ void BufferPoolManager::NewPageAsync(std::function<void(Page*)> callback) {
     } else if (replacer_->Victim(&frame_id)) {
         Page* old_page = &pages_[frame_id];
         page_id_t old_page_id = old_page->GetPageId();
-        
+
         if (old_page->IsDirty()) {
             page_table_.erase(old_page_id);
             page_id_t new_page_id = disk_manager_->AllocatePage();

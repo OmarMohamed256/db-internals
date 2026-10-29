@@ -16,20 +16,11 @@ public:
         : child_(child), limit_(limit), current_count_(0) {}
 
     void Init() override {
-        // TODO(student):
-        // 1. Reset current_count_ = 0.
-        // 2. If child_ != nullptr, call child_->Init().
         current_count_ = 0;
         if(child_ != nullptr) child_->Init();
     }
 
     bool Next(RowType *out_row, RID *out_rid) override {
-        // TODO(student):
-        // 1. If current_count_ >= limit_, return false (limit reached).
-        // 2. Fetch the next tuple from child_->Next(out_row, out_rid).
-        //    If child returns false, return false (child exhausted).
-        // 3. Increment current_count_++.
-        // 4. Return true.
         if(current_count_ >= limit_) return false;
         if(!child_->Next(out_row, out_rid)) return false;
         current_count_++;

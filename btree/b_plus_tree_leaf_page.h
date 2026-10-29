@@ -60,7 +60,7 @@ public:
   }
 
   /**
-   * TODO(student): Binary search to find the index of the first key >= search
+   * Binary search to find the index of the first key >= search
    * key.
    *
    * Invariants:
@@ -87,15 +87,7 @@ public:
   }
 
   /**
-   * TODO(student): Point lookup: Find value associated with key.
-   *
-   * Steps:
-   * 1. Use KeyIndex to locate the target index.
-   * 2. If index < GetSize() and array_[idx].first == key
-   *    (check strict weak ordering equivalence: !comparator(key,
-   * arr[idx].first) && !comparator(arr[idx].first, key)), populate *result and
-   * return true.
-   * 3. Otherwise return false.
+   * Point lookup: Find value associated with key.
    */
   bool Lookup(const KeyType &key, ValueType *result,
               const KeyComparator &comparator) const {
@@ -110,15 +102,7 @@ public:
   }
 
   /**
-   * TODO(student): Insert a (key, value) pair in sorted order.
-   *
-   * Steps:
-   * 1. Find insertion index via KeyIndex.
-   * 2. Check for duplicates: if key exists, return -1 (unique index invariant).
-   * 3. Shift elements to the right to make room at idx: array_[i] = array_[i -
-   * 1].
-   * 4. Set array_[idx] = {key, value} and IncreaseSize(1).
-   * 5. Return updated GetSize().
+   * Insert a (key, value) pair in sorted order.
    */
   int Insert(const KeyType &key, const ValueType &value,
              const KeyComparator &comparator) {
@@ -137,14 +121,7 @@ public:
   }
 
   /**
-   * TODO(student): Remove the entry corresponding to key.
-   *
-   * Steps:
-   * 1. Find key index.
-   * 2. If key doesn't exist, return -1.
-   * 3. Shift elements to the left to close the gap: array_[i] = array_[i + 1].
-   * 4. IncreaseSize(-1).
-   * 5. Return updated GetSize().
+   * Remove the entry corresponding to key.
    */
   int RemoveAndDeleteRecord(const KeyType &key,
                             const KeyComparator &comparator) {
@@ -160,19 +137,7 @@ public:
   }
 
   /**
-   * TODO(student): Split this leaf page:
-   *
-   * Steps:
-   * 1. recipient->Init(recipient_page_id, GetParentPageId(), GetMaxSize()).
-   * 2. Calculate move_count = GetSize() / 2, start_idx = GetSize() -
-   * move_count.
-   * 3. Copy array_[start_idx ... ] into recipient->array_[0 ... ].
-   * 4. Update sizes for both nodes:
-   *    recipient->SetSize(move_count), SetSize(start_idx).
-   * 5. Splice sibling pointers:
-   *    - recipient->next = this->next
-   *    - recipient->prev = this->page_id
-   *    - this->next = recipient->page_id
+   * Split this leaf page, moving the upper half into recipient.
    */
   void Split(page_id_t recipient_page_id, BPlusTreeLeafPage *recipient) {
     recipient->Init(recipient_page_id, GetParentPageId(), GetMaxSize());

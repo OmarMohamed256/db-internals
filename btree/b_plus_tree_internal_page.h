@@ -62,7 +62,7 @@ public:
   }
 
   /**
-   * TODO(student): Binary search to find which child page pointer to descend
+   * Binary search to find which child page pointer to descend
    * into.
    *
    * Invariants:
@@ -87,7 +87,7 @@ public:
   }
 
   /**
-   * TODO(student): Populate a newly created root node with two children
+   * Populate a newly created root node with two children
    * separated by key.
    *
    * Invariants:
@@ -105,16 +105,8 @@ public:
   }
 
   /**
-   * TODO(student): Insert a new child pointer and separator key after an
+   * Insert a new child pointer and separator key after an
    * existing child.
-   *
-   * Steps:
-   * 1. Find index of old_value via ValueIndex.
-   * 2. Shift items from GetSize() down to old_idx + 1: array_[i] = array_[i -
-   * 1].
-   * 3. Insert {new_key, new_value} at old_idx + 1.
-   * 4. IncreaseSize(1).
-   * 5. Return updated GetSize().
    */
   int InsertNodeAfter(const ValueType &old_value, const KeyType &new_key,
                       const ValueType &new_value) {
@@ -128,18 +120,7 @@ public:
   }
 
   /**
-   * TODO(student): Split internal page:
-   *
-   * Invariants & Critical Steps:
-   * 1. split_idx = GetSize() / 2.
-   * 2. *split_key = KeyAt(split_idx) -> this separator key will be pushed up to
-   * parent!
-   * 3. recipient receives entries from split_idx onwards.
-   *    Note: recipient->array_[0].second = array_[split_idx].second.
-   * 4. Update sizes for both nodes.
-   * 5. CRITICAL: For every child pointer adopted by recipient, fetch its Page
-   * from bpm, update child->SetParentPageId(recipient_page_id), and unpin with
-   * dirty=true!
+   * Split internal page, pushing the middle key up to the parent.
    */
   void Split(page_id_t recipient_page_id, BPlusTreeInternalPage *recipient,
              KeyType *split_key) {
@@ -233,7 +214,7 @@ public:
   }
 
   /**
-   * TODO(student): Remove entry at index.
+   * Remove entry at index.
    *
    * Shift entries from index + 1 down to index. IncreaseSize(-1).
    */

@@ -1,43 +1,12 @@
-# Compiler and Flags
-CC      := gcc
-CFLAGS  := -Wall -Wextra -pthread -g -std=c17 -D_GNU_SOURCE -O2
-INCLUDES:= -I.
+# Root Makefile for AetherDB / DBMS Internals Engine
+# Orchestrates building and testing across all engine submodules.
 
-# Wildcard discovery
-SRCS := $(wildcard *.c)
-OBJS := $(SRCS:.c=.o)
-TARGETS := server threaded_server stress_test
+.PHONY: all test test-all test-storage test-btree test-exec test-opt test-concurrency test-recovery clean help
 
-# Default target: build all executables
-.PHONY: all
-all: $(TARGETS)
+# Default target: run the full test suite
+all: test-all
 
-# Pattern rule: compile any .c file into .o object file
-%.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-# Link individual executables
-server: server.o
-	$(CC) $(CFLAGS) $^ -o $@
-
-threaded_server: threaded_server.o
-	$(CC) $(CFLAGS) $^ -o $@
-
-stress_test: stress_test.o
-	$(CC) $(CFLAGS) $^ -o $@
-
-# Clean target
-.PHONY: clean
-clean:
-	rm -f *.o $(TARGETS)
-
-# Valgrind target
-.PHONY: valgrind
-valgrind: server
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./server
-
-# Help target
-.PHONY: help test-storage test-btree test-exec test-opt test-all
+test: test-all
 
 test-storage:
 	$(MAKE) -C storage test
@@ -51,16 +20,44 @@ test-exec:
 test-opt:
 	$(MAKE) -C optimizer test
 
-test-all: test-btree test-storage test-exec test-opt
+test-concurrency:
+	$(MAKE) -C concurrency test
+
+test-recovery:
+	$(MAKE) -C recovery test
+
+test-server:
+	$(MAKE) -C server test
+
+cli:
+	$(MAKE) -C server cli
+
+server:
+	$(MAKE) -C server server
+
+test-all: test-storage test-btree test-exec test-opt test-concurrency test-recovery
+
+clean:
+	$(MAKE) -C storage clean
+	$(MAKE) -C btree clean
+	$(MAKE) -C execution clean
+	$(MAKE) -C optimizer clean
+	$(MAKE) -C concurrency clean
+	$(MAKE) -C recovery clean
+	$(MAKE) -C server clean
+	rm -f *.db *.wal *.meta *.log
 
 help:
-	@echo "Available Makefile targets:"
-	@echo "  make              - Build all binaries (server, threaded_server, stress_test)"
-	@echo "  make server       - Build only server"
-	@echo "  make test-storage - Build and run TableHeap & PageGuard tests (ASan)"
-	@echo "  make test-btree   - Build and run B+ Tree tests (ASan)"
-	@echo "  make test-exec    - Build and run Volcano Execution Engine tests (ASan)"
-	@echo "  make test-opt     - Build and run Cost-Based Optimizer & DP Join tests (ASan)"
-	@echo "  make test-all     - Run B+ Tree, Storage, Execution, and Optimizer test suites"
-	@echo "  make clean        - Delete build artifacts and binaries"
-	@echo "  make valgrind     - Run Valgrind on server binary"
+	@echo "================================================================="
+	@echo "AetherDB: Production-Grade Disk-Oriented Relational Engine (C++17)"
+	@echo "================================================================="
+	@echo "Available targets:"
+	@echo "  make test-all         - Run all test suites across the entire engine (ASan)"
+	@echo "  make test-storage     - TableHeap & Slotted-Page PageGuards"
+	@echo "  make test-btree       - Concurrent B+ Tree with Optimistic Lock Coupling"
+	@echo "  make test-exec        - Volcano Query Execution Engine (Joins, Aggs, Scans)"
+	@echo "  make test-opt         - Selinger System-R Cost-Based Optimizer (DP Joins)"
+	@echo "  make test-concurrency - Multi-Version Concurrency Control (MVCC) & 2PL"
+	@echo "  make test-recovery    - Write-Ahead Logging & 3-Phase ARIES Crash Recovery"
+	@echo "  make clean            - Remove all compiled binaries and test database files"
+	@echo "================================================================="

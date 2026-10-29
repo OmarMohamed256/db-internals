@@ -66,26 +66,15 @@ public:
     }
 
     /**
-     * TODO(student): Dereference iterator to return (key, value) pair at current index.
+     * Dereference iterator to return (key, value) pair at current index.
      */
     const MappingType &operator*() const {
-        // TODO: Access leaf and return array_[index_]
         auto *leaf = reinterpret_cast<LeafPage*>(page_->GetData());
         return leaf->GetItem(index_);
     }
 
     /**
-     * TODO(student): Advance iterator to the next key-value pair.
-     *
-     * Steps:
-     * 1. If IsEnd(), return *this.
-     * 2. Increment index_.
-     * 3. If index_ >= leaf->GetSize():
-     *    - Read next_page_id = leaf->GetNextPageId().
-     *    - Unpin current page: bpm_->UnpinPage(page_id_, false).
-     *    - Set page_ = nullptr, page_id_ = next_page_id, index_ = 0.
-     *    - If page_id_ != INVALID_PAGE_ID, fetch next page: page_ = bpm_->FetchPage(page_id_).
-     * 4. Return *this.
+     * Advance iterator to the next key-value pair.
      */
     BPlusTreeIterator &operator++() {
         if (IsEnd()) return *this;

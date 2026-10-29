@@ -41,7 +41,8 @@ public:
         double leaf_pages_read = std::ceil(selectivity * static_cast<double>(index_leaf_pages));
 
         double index_io_cost = (static_cast<double>(tree_height) + leaf_pages_read) * PAGE_READ_COST_SEQ;
-        double heap_deref_cost = matching_tuples * PAGE_READ_COST_RANDOM;
+        double heap_pages = std::ceil(selectivity * static_cast<double>(stats.GetNumPages()));
+        double heap_deref_cost = heap_pages * PAGE_READ_COST_RANDOM;
         double cpu_cost = matching_tuples * TUPLE_CPU_COST;
 
         return index_io_cost + heap_deref_cost + cpu_cost;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -90,7 +91,9 @@ public:
     // 2. If an index exists on this column, evaluate its cost
     if (matching_idx != nullptr) {
       double sel =
-          stats.EstimateRangeSelectivity(filter_col, low_key, high_key);
+          (low_key == high_key)
+              ? stats.EstimateEqualitySelectivity(filter_col)
+              : stats.EstimateRangeSelectivity(filter_col, low_key, high_key);
       double cost_idx = CostModel::CostIndexScan(
           stats, sel, matching_idx->tree_height, matching_idx->leaf_pages);
 
@@ -113,24 +116,60 @@ public:
    */
   std::shared_ptr<AbstractPlanNode>
   PushdownFilter(const std::shared_ptr<FilterPlanNode> &filter_node) {
-    // TODO(student):
-    // 1. If filter child is not a join, return filter_node unmodified.
-    // 2. If child is a JoinPlanNode:
-    //    a. Inspect predicate to determine if it refers strictly to left child
-    //    table or right child table. b. If target is left child:
-    //         new_left = make_shared<FilterPlanNode>(join->GetLeft(),
-    //         filter->GetPredicate(), ...); return
-    //         make_shared<JoinPlanNode>(join->GetType(), new_left,
-    //         join->GetRight(), ...);
-    //    c. If target is right child:
-    //         new_right = make_shared<FilterPlanNode>(join->GetRight(),
-    //         filter->GetPredicate(), ...); return
-    //         make_shared<JoinPlanNode>(join->GetType(), join->GetLeft(),
-    //         new_right, ...);
-    // 3. If predicate references both tables, filter cannot be pushed down;
-    // return filter_node.
-    (void)filter_node;
-    return nullptr;
+    if (!filter_node)
+      return nullptr;
+    auto child = filter_node->GetChild();
+    if (!child || (child->GetType() != PlanNodeType::HASH_JOIN &&
+                   child->GetType() != PlanNodeType::NESTED_LOOP_JOIN)) {
+      return filter_node;
+    }
+
+    auto join = std::dynamic_pointer_cast<JoinPlanNode>(child);
+    std::string left_table, right_table;
+    if (auto scan =
+            std::dynamic_pointer_cast<SeqScanPlanNode>(join->GetLeft())) {
+      left_table = scan->GetTableName();
+    } else if (auto idx = std::dynamic_pointer_cast<IndexScanPlanNode>(
+                   join->GetLeft())) {
+      left_table = idx->GetTableName();
+    }
+
+    if (auto scan =
+            std::dynamic_pointer_cast<SeqScanPlanNode>(join->GetRight())) {
+      right_table = scan->GetTableName();
+    } else if (auto idx = std::dynamic_pointer_cast<IndexScanPlanNode>(
+                   join->GetRight())) {
+      right_table = idx->GetTableName();
+    }
+
+    const std::string &pred = filter_node->GetPredicate();
+    bool refs_left = (!left_table.empty() &&
+                      pred.find(left_table + ".") != std::string::npos);
+    bool refs_right = (!right_table.empty() &&
+                       pred.find(right_table + ".") != std::string::npos);
+    if (refs_left && refs_right) {
+      return filter_node;
+    }
+
+    if (refs_left) {
+      auto new_left = std::make_shared<FilterPlanNode>(
+          join->GetLeft(), filter_node->GetPredicate(), filter_node->GetCost(),
+          filter_node->GetEstimatedCardinality());
+      return std::make_shared<JoinPlanNode>(
+          join->GetType(), new_left, join->GetRight(), join->GetJoinKey(),
+          join->GetCost(), join->GetEstimatedCardinality());
+    }
+
+    if (refs_right) {
+      auto new_right = std::make_shared<FilterPlanNode>(
+          join->GetRight(), filter_node->GetPredicate(), filter_node->GetCost(),
+          filter_node->GetEstimatedCardinality());
+      return std::make_shared<JoinPlanNode>(
+          join->GetType(), join->GetLeft(), new_right, join->GetJoinKey(),
+          join->GetCost(), join->GetEstimatedCardinality());
+    }
+
+    return filter_node;
   }
 
   /**
@@ -145,76 +184,152 @@ public:
   std::shared_ptr<AbstractPlanNode>
   OptimizeJoinOrderDP(const std::vector<std::string> &tables,
                       const std::vector<JoinEdge> &edges) {
-    // TODO(student):
-    // const size_t N = tables.size();
-    // memo_.clear();
+    const size_t N = tables.size();
+    memo_.clear();
+
+    // ========================================================================
+    // PHASE 1: Base Relations (Subsets of Size 1)
+    // ------------------------------------------------------------------------
+    // For each table i, assign bitmask (1 << i) and store its optimal access path.
+    // In this milestone, base tables have no range filters, so each uses SeqScan.
     //
-    // 1. SIZE 1 (Base relations):
-    //    For each table i in [0, N - 1]:
-    //      uint32_t mask = (1 << i);
-    //      memo_[mask] = default scan plan for tables[i] (via SelectAccessPath
-    //      or SeqScanPlanNode).
+    // TRACE - LEVEL 1 (Base Relations):
+    //   Table 0 ("users"):      mask = (1 << 0) = 1 (binary 001)
+    //     -> memo_[1] = SeqScan(users)      [Cost: 6.00,    Rows: 100]
+    //   Table 1 ("orders"):     mask = (1 << 1) = 2 (binary 010)
+    //     -> memo_[2] = SeqScan(orders)     [Cost: 150.00,  Rows: 5000]
+    //   Table 2 ("line_items"): mask = (1 << 2) = 4 (binary 100)
+    //     -> memo_[4] = SeqScan(line_items) [Cost: 1500.00, Rows: 50000]
+    // ========================================================================
+    for (size_t i = 0; i < N; ++i) {
+      uint32_t mask = (1U << i);
+      TableStats stats = catalog_[tables[i]];
+      double cost_seq = CostModel::CostSeqScan(stats);
+      memo_[mask] = std::make_shared<SeqScanPlanNode>(tables[i], cost_seq,
+                                                      stats.GetNumTuples());
+    }
+
+    // ========================================================================
+    // PHASE 2: Bottom-Up Subset Search (Subsets of Size 2 to N)
+    // ------------------------------------------------------------------------
+    // Progressively enumerate subproblems by size: pairs (2), triplets (3), etc.
+    // For each subset S, evaluate all left-deep partitions (S1 = S ^ s2, S2 = s2).
     //
-    // 2. SIZE 2 to N (Bottom-up subset search):
-    //    For subset_size = 2 to N:
-    //      For each subset mask S in [1, (1 << N) - 1] where
-    //      __builtin_popcount(S) == subset_size:
-    //        double best_cost = std::numeric_limits<double>::infinity();
-    //        std::shared_ptr<AbstractPlanNode> best_plan = nullptr;
+    // TRACE - LEVEL 2 (2-Table Pairs, e.g. S = 3 -> binary 011 = {users, orders}):
+    //   Partition with j = 1 ("orders"):
+    //     s2 = (1 << 1) = 2 ("orders"), s1 = 3 ^ 2 = 1 ("users")
+    //     plan_left  = memo_[1] (Cost: 6.00,   Rows: 100)
+    //     plan_right = memo_[2] (Cost: 150.00, Rows: 5000)
+    //     edge       = "users.id = orders.user_id", joined_card = 5000
+    //     cost_hj    = 6 + 150 + (100*0.03) + (5000*0.02) + (5000*0.01) = 309.00
+    //     -> memo_[3] = HashJoin(users, orders) [Cost: 309.00]
     //
-    //        // Partition S into non-empty S1 and S2 (left-deep or bushy):
-    //        For each table j where ((1 << j) & S) != 0:
-    //          uint32_t s2 = (1 << j);
-    //          uint32_t s1 = S ^ s2;
-    //          if (memo_.find(s1) == memo_.end() || memo_.find(s2) ==
-    //          memo_.end()) continue;
+    //   Tree for memo_[3]:
+    //              HashJoin (users.id = orders.user_id) [Cost: 309.00]
+    //             /                                    \ [right child]
+    //      memo_[1]: SeqScan(users)             memo_[2]: SeqScan(orders)
+    //      [Cost: 6.00, Rows: 100]              [Cost: 150.00, Rows: 5000]
     //
-    //          auto plan_left = memo_[s1];
-    //          auto plan_right = memo_[s2];
+    // TRACE - LEVEL 3 (3-Table Full Join, S = 7 -> binary 111 = {users, orders, line_items}):
+    //   Partition with j = 2 ("line_items"):
+    //     s2 = (1 << 2) = 4 ("line_items"), s1 = 7 ^ 4 = 3 ({users, orders})
+    //     plan_left  = memo_[3] (Cost: 309.00,  Rows: 5000)   <-- Reused from Level 2!
+    //     plan_right = memo_[4] (Cost: 1500.00, Rows: 50000)
+    //     edge       = "orders.id = line_items.order_id", joined_card = 50000
+    //     cost_hj    = 309 + 1500 + (5000*0.03) + (50000*0.02) + (50000*0.01) = 3459.00
+    //     -> memo_[7] = HashJoin(memo_[3], memo_[4]) [Cost: 3459.00]
     //
-    //          // Check join edge connecting s1 and s2:
-    //          JoinEdge edge = FindEdge(s1, s2, tables, edges);
-    //          size_t joined_card = EstimateJoinCardinality(plan_left,
-    //          plan_right, edge);
+    //   Tree for memo_[7] (Left-Deep structure):
+    //                     HashJoin (orders.id = line_items.order_id) [Cost: 3459.00]
+    //                    /                                          \ [right table]
+    //            memo_[3] (from Level 2)                     memo_[4]: SeqScan(line_items)
+    //            HashJoin (users.id = orders.user_id)        [Cost: 1500.00, Rows: 50000]
+    //           /                                    \ [right table]
+    //   memo_[1]: SeqScan(users)             memo_[2]: SeqScan(orders)
+    //   [Cost: 6.00, Rows: 100]              [Cost: 150.00, Rows: 5000]
+    // ========================================================================
+    for (size_t size = 2; size <= N; ++size) {
+      for (uint32_t S = 1; S < (1U << N); ++S) {
+        if (static_cast<size_t>(__builtin_popcount(S)) != size) {
+          continue;
+        }
+
+        double best_cost = std::numeric_limits<double>::infinity();
+        std::shared_ptr<AbstractPlanNode> best_plan = nullptr;
+
+        // Partition S into non-empty S1 (left subtree) and S2 (single table j):
+        // System R left-deep enumeration: right child S2 is always a single table.
+        for (size_t j = 0; j < N; ++j) {
+          if ((S & (1U << j)) == 0) {
+            continue; // Table j is not part of subset S
+          }
+
+          uint32_t s2 = (1U << j); // Right child: single table j
+          uint32_t s1 = S ^ s2;    // Left child: subset S without table j
+
+          if (memo_.find(s1) == memo_.end() || memo_.find(s2) == memo_.end()) {
+            continue;
+          }
+
+          auto plan_left = memo_[s1];
+          auto plan_right = memo_[s2];
+
+          // Search query edges to find join condition connecting s1 and s2:
+          JoinEdge matched_edge;
+          bool has_edge = false;
+          for (const auto &edge : edges) {
+            for (size_t k = 0; k < N; ++k) {
+              if ((s1 & (1U << k)) == 0) continue;
+              if ((edge.left_table == tables[k] && edge.right_table == tables[j]) ||
+                  (edge.left_table == tables[j] && edge.right_table == tables[k])) {
+                matched_edge = edge;
+                has_edge = true;
+                break;
+              }
+            }
+            if (has_edge) break;
+          }
+
+          // If an edge exists, use its predicate and equi-join cardinality.
+          // If no edge exists, this is a Cartesian/Cross Product (penalized with card_left * card_right).
+          std::string join_key = has_edge ? matched_edge.ToString() : "CROSS PRODUCT";
+          size_t joined_card = has_edge
+              ? std::max(plan_left->GetEstimatedCardinality(), plan_right->GetEstimatedCardinality())
+              : (plan_left->GetEstimatedCardinality() * plan_right->GetEstimatedCardinality());
+
+          // Evaluate Hash Join for this join ordering partition:
+          double cost_hj = CostModel::CostHashJoin(
+              plan_left->GetCost(), plan_left->GetEstimatedCardinality(),
+              plan_right->GetCost(), plan_right->GetEstimatedCardinality(),
+              joined_card);
+          if (cost_hj < best_cost) {
+            best_cost = cost_hj;
+            best_plan = std::make_shared<JoinPlanNode>(
+                PlanNodeType::HASH_JOIN, plan_left, plan_right,
+                join_key, cost_hj, joined_card);
+          }
+        }
+
+        if (best_plan != nullptr) {
+          memo_[S] = best_plan;
+        }
+      }
+    }
+
+    // ========================================================================
+    // PHASE 3: Return the Global Optimal Plan
+    // ------------------------------------------------------------------------
+    // Mask (1 << N) - 1 has all N bits set to 1, representing the full query.
     //
-    //          // Evaluate Hash Join:
-    //          double cost_hj = CostModel::CostHashJoin(plan_left->GetCost(),
-    //          plan_left->GetEstimatedCardinality(),
-    //                                                   plan_right->GetCost(),
-    //                                                   plan_right->GetEstimatedCardinality(),
-    //                                                   joined_card);
-    //          if (cost_hj < best_cost) {
-    //              best_cost = cost_hj;
-    //              best_plan =
-    //              std::make_shared<JoinPlanNode>(PlanNodeType::HASH_JOIN,
-    //              plan_left, plan_right,
-    //                                                         edge.ToString(),
-    //                                                         cost_hj,
-    //                                                         joined_card);
-    //          }
+    // Final Optimal Left-Deep Plan Tree:
     //
-    //          // Evaluate Nested Loop Join:
-    //          double cost_nlj =
-    //          CostModel::CostNestedLoopJoin(plan_left->GetCost(),
-    //          plan_left->GetEstimatedCardinality(),
-    //                                                          plan_right->GetCost(),
-    //                                                          plan_right->GetEstimatedCardinality());
-    //          if (cost_nlj < best_cost) {
-    //              best_cost = cost_nlj;
-    //              best_plan =
-    //              std::make_shared<JoinPlanNode>(PlanNodeType::NESTED_LOOP_JOIN,
-    //              plan_left, plan_right,
-    //                                                         edge.ToString(),
-    //                                                         cost_nlj,
-    //                                                         joined_card);
-    //          }
-    //
-    //        memo_[S] = best_plan;
-    //
-    // 3. Return the plan corresponding to all tables: memo_[(1 << N) - 1].
-    (void)tables;
-    (void)edges;
-    return nullptr;
+    //   HashJoin(ON orders.id = line_items.order_id) [Cost: 3459.00, Rows: 50000]
+    //   ├── Left:  HashJoin(ON users.id = orders.user_id) [Cost: 309.00, Rows: 5000]
+    //   │          ├── Left:  SeqScan(users) [Cost: 6.00, Rows: 100]
+    //   │          └── Right: SeqScan(orders) [Cost: 150.00, Rows: 5000]
+    //   └── Right: SeqScan(line_items) [Cost: 1500.00, Rows: 50000]
+    // ========================================================================
+    return memo_[(1U << N) - 1];
   }
 
   inline const std::unordered_map<uint32_t, std::shared_ptr<AbstractPlanNode>> &

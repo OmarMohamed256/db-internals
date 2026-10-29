@@ -64,15 +64,7 @@ public:
   inline page_id_t GetRootPageId() const { return root_page_id_; }
 
   /**
-   * TODO(student): Point query: Search for a single key.
-   *
-   * Steps:
-   * 1. If IsEmpty(), return false.
-   * 2. Call FindLeafPage(key) to retrieve target leaf page.
-   * 3. Cast page data to LeafPage*, call leaf->Lookup(key, &val, comparator_).
-   * 4. If found and result != nullptr, append val to result.
-   * 5. Unpin leaf page (is_dirty = false).
-   * 6. Return true if key found, false otherwise.
+   * Point query: Search for a single key.
    */
   bool GetValue(const KeyType &key, std::vector<ValueType> *result,
                 Context *ctx = nullptr) {
@@ -97,12 +89,7 @@ public:
   }
 
   /**
-   * TODO(student): Insert a (key, value) pair into the index.
-   *
-   * Steps:
-   * 1. If IsEmpty(), call StartNewTree(key, value) and return true.
-   * 2. Otherwise call InsertIntoLeaf(key, value).
-   * 3. Return true on success, false if duplicate key.
+   * Insert a (key, value) pair into the index.
    */
   bool Insert(const KeyType &key, const ValueType &value,
               Context *ctx = nullptr) {
@@ -141,20 +128,7 @@ public:
   }
 
   /**
-   * TODO(student): Remove a key from the index.
-   *
-   * Steps:
-   * 1. If IsEmpty(), return.
-   * 2. Find leaf page.
-   * 3. Call leaf->RemoveAndDeleteRecord(key, comparator_).
-   * 4. If key wasn't found, unpin leaf (false) and return.
-   * 5. If leaf is root:
-   *    - If size == 0, delete root page from bpm, set root_page_id_ =
-   * INVALID_PAGE_ID.
-   *    - Unpin leaf (true) and return.
-   * 6. If leaf size < leaf->GetMinSize(), call
-   * HandleUnderflow(leaf_page).
-   * 7. Unpin leaf (true).
+   * Remove a key from the index.
    */
   void Remove(const KeyType &key, Context *ctx = nullptr) {
     Context local_ctx;
@@ -246,7 +220,7 @@ public:
   }
 
   /**
-   * TODO(student): Return iterator pointing to first item in the leftmost leaf
+   * Return iterator pointing to first item in the leftmost leaf
    * page.
    */
   Iterator Begin() {
@@ -362,7 +336,7 @@ private:
   std::shared_mutex root_latch_;
 
   /**
-   * TODO(student): Initialize an empty tree by allocating a new root leaf page.
+   * Initialize an empty tree by allocating a new root leaf page.
    */
   bool StartNewTree(const KeyType &key, const ValueType &value) {
     // Acquire exclusive lock protecting root_page_id_
@@ -391,7 +365,7 @@ private:
   }
 
   /**
-   * TODO(student): Descend root to leaf to find target leaf page.
+   * Descend root to leaf to find target leaf page.
    * Returns fetched Page* with pin_count = 1.
    */
   Page *FindLeafPage(const KeyType &key,
@@ -566,22 +540,7 @@ private:
   }
 
   /**
-   * TODO(student): Insert into existing leaf page and handle potential split.
-   *
-   * Invariants & Steps:
-   * 1. leaf_page = FindLeafPage(key).
-   * 2. new_size = leaf->Insert(key, value, comparator_).
-   * 3. If new_size == -1 (duplicate), unpin leaf (false) and return false.
-   * 4. If new_size >= leaf->GetMaxSize():
-   *    - Allocate new leaf page via bpm_->NewPage(&new_leaf_id).
-   *    - leaf->Split(new_leaf_id, new_leaf).
-   *    - Update next sibling's prev_page_id if new_leaf->next !=
-   * INVALID_PAGE_ID.
-   *    - Push separator key (new_leaf->KeyAt(0)) to parent:
-   *      InsertIntoParent(leaf_page, split_key, new_leaf_page).
-   *    - Unpin new_leaf (true).
-   * 5. Unpin leaf_page (true).
-   * 6. Return true.
+   * Insert into existing leaf page and handle potential split.
    */
   bool InsertIntoLeaf(const KeyType &key, const ValueType &value,
                       Context *ctx) {
@@ -650,28 +609,7 @@ private:
   }
 
   /**
-   * TODO(student): Insert separator key and new child pointer into parent node.
-   *
-   * Invariants & Steps:
-   * 1. If old_page was the root (old_node->IsRootPage()):
-   *    - Root split! Tree height increases by 1.
-   *    - Allocate new root page via bpm_->NewPage(&new_root_id).
-   *    - Init as InternalPage, call new_root->Populate(old_page->GetPageId(),
-   * key, new_page->GetPageId()).
-   *    - Update parent pointers of old_page and new_page to new_root_id.
-   *    - root_page_id_ = new_root_id. Unpin new_root (true). Return.
-   * 2. Else:
-   *    - Fetch parent page via bpm_->FetchPage(old_node->GetParentPageId()).
-   *    - parent->InsertNodeAfter(old_page->GetPageId(), key,
-   * new_page->GetPageId()).
-   *    - Update new_node's parent_page_id = parent_id.
-   *    - If parent overflowed (parent->GetSize() > parent->GetMaxSize()):
-   *      - Allocate new internal page via bpm_->NewPage(&new_parent_id).
-   *      - parent->Split(new_parent_id, new_parent, &parent_split_key, bpm_).
-   *      - Recurse: InsertIntoParent(parent_page, parent_split_key,
-   * new_parent_page).
-   *      - Unpin new_parent (true).
-   *    - Unpin parent_page (true).
+   * Insert separator key and new child pointer into parent node.
    */
   void InsertIntoParent(Page *old_page, const KeyType &key, Page *new_page) {
     BPlusTreePage *new_node =
@@ -745,7 +683,7 @@ private:
   }
 
   /**
-   * TODO(student): Handle underflow when a node's size drops below
+   * Handle underflow when a node's size drops below
    * GetMinSize(). Dispatches to MergeNodes or BorrowFromLeft / BorrowFromRight.
    *
    * @param underflowed_page The page that dropped below 50% capacity.
@@ -863,7 +801,7 @@ private:
   }
 
   /**
-   * TODO(student): Merges right_page into left_page and deletes right_page.
+   * Merges right_page into left_page and deletes right_page.
    *
    * Invariant: left_page and right_page MUST be consecutive siblings under
    * parent.
@@ -928,13 +866,9 @@ private:
   }
 
   /**
-   * TODO(student): Borrows the largest/last item from left_page and prepends it
+   * Borrows the largest/last item from left_page and prepends it
    * to right_page. (Used when right_page underflowed and left sibling has spare
    * capacity).
-   *
-   * If pages are internal nodes, use:
-   *   page_id_t moved = left_internal->LendLastTo(right_internal, separator);
-   *   ReparentChild(moved, right_page->GetPageId());
    */
   void BorrowFromLeft(Page *left_page, Page *right_page, InternalPage *parent,
                       int separator_idx) {
@@ -962,13 +896,9 @@ private:
   }
 
   /**
-   * TODO(student): Borrows the smallest/first item from right_page and
+   * Borrows the smallest/first item from right_page and
    * appends it to left_page. (Used when left_page underflowed and right
    * sibling has spare capacity).
-   *
-   * If pages are internal nodes, use:
-   *   page_id_t moved = right_internal->LendFirstTo(left_internal, separator);
-   *   ReparentChild(moved, left_page->GetPageId());
    */
   void BorrowFromRight(Page *left_page, Page *right_page, InternalPage *parent,
                        int separator_idx) {
@@ -996,7 +926,7 @@ private:
   }
 
   /**
-   * TODO(student): Shrinks tree height if root node becomes degenerate:
+   * Shrinks tree height if root node becomes degenerate:
    * - Internal root with only 1 child pointer -> child becomes new root.
    * - Leaf root with 0 keys -> tree becomes empty (INVALID_PAGE_ID).
    *

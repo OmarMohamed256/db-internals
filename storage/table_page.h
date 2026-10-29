@@ -92,16 +92,6 @@ public:
 
   /**
    * Insert a UserRow into this slotted page.
-   *
-   * Instructions:
-   * 1. Check if there is an existing tombstoned slot (size == 0). If found,
-   * reuse it.
-   * 2. If allocating a new slot, ensure remaining free space is >=
-   * sizeof(UserRow) + sizeof(TableSlot).
-   * 3. Move free_space_ptr_ downwards by sizeof(UserRow), copy tuple data, and
-   * record slot offset/size.
-   * 4. Populate out_rid with {page_id_, slot_num} and return true.
-   * 5. Return false if the page cannot accommodate the tuple.
    */
   bool InsertTuple(const UserRow &row, RID *out_rid) {
     for (uint32_t slot_idx = 0; slot_idx < num_records_; slot_idx++) {
@@ -130,12 +120,6 @@ public:
 
   /**
    * Retrieve tuple by slot number.
-   *
-   * Instructions:
-   * 1. Validate slot_num < num_records_.
-   * 2. Ensure slot is not tombstoned (size > 0).
-   * 3. Copy UserRow from GetData() + slot.offset into out_row.
-   * 4. Return false if slot is invalid or row->is_deleted is true.
    */
   bool GetTuple(uint32_t slot_num, UserRow *out_row) const {
     if (slot_num < num_records_ && GetSlots()[slot_num].size > 0) {
@@ -165,10 +149,6 @@ public:
 
   /**
    * Mark tuple as tombstoned/deleted.
-   *
-   * Instructions:
-   * 1. Set UserRow::is_deleted = true.
-   * 2. Mark slot.size = 0 so the slot can be reused by future inserts.
    */
   bool MarkDelete(uint32_t slot_num) {
     if (slot_num >= num_records_ || GetSlots()[slot_num].size == 0) {

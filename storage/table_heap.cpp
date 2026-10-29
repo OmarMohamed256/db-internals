@@ -163,17 +163,6 @@ TableIterator &TableIterator::operator++() {
 }
 
 void TableIterator::AdvanceToNextLiveTuple() {
-  // TODO:
-  // 1. While rid_.IsValid():
-  //    a. Fetch page at rid_.page_id.
-  //    b. While rid_.slot_num < page->GetNumRecords():
-  //       - If page->GetTuple(rid_.slot_num, &current_row_) succeeds: return
-  //       (found live tuple).
-  //       - Else: rid_.slot_num++.
-  //    c. If page exhausted, follow page->GetNextPageId().
-  //    d. If next page is INVALID_PAGE_ID, set rid_ = RID(INVALID_PAGE_ID, 0)
-  //    and break. e. Else set rid_.page_id = next_page_id, rid_.slot_num = 0,
-  //    and continue.
   while (rid_.IsValid()) {
     ReadPageGuard guard = FetchPageRead(table_heap_->GetBPM(), rid_.page_id);
     auto page = guard.As<TablePage>();

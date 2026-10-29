@@ -1,0 +1,21 @@
+# Build outputs
+*.o
+*_test
+!*_test.cpp
+bpm_benchmark
+buffer_pool_test
+legacy/network_prototype/server
+legacy/network_prototype/stress_test
+legacy/network_prototype/threaded_server
+legacy/network_prototype/threads
+server/aether_cli
+server/aether_server
+
+# Runtime database files
+*.db
+*.wal
+*.meta
+*.log
+
+# Local planning docs and study guides
+docs/

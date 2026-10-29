@@ -9,7 +9,7 @@
 /**
  * UserRow: A fixed-width table schema representing a user record.
  * 
- * In accordance with the 80/20 pragmatic roadmap, using a fixed-width record
+ * Using a fixed-width record
  * eliminates low-yield variable-length byte defragmentation while exercising 100%
  * of the core database invariants:
  *   - Slotted-page tuple storage and boundaries

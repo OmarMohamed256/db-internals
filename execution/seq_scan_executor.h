@@ -31,14 +31,6 @@ public:
      * @return true if a tuple was yielded, false if scan reached EOF.
      */
     bool Next(UserRow *out_row, RID *out_rid) override {
-        // TODO(student):
-        // 1. Check if cursor_ is at the end of the table (cursor_.IsEnd()).
-        //    If so, return false.
-        // 2. Dereference cursor_ (*cursor_) to get std::pair<UserRow, RID>.
-        // 3. Advance cursor_ (++cursor_).
-        // 4. Store the tuple into *out_row.
-        // 5. If out_rid != nullptr, store the RID into *out_rid.
-        // 6. Return true.
         if(cursor_.IsEnd()){
             return false;
         }
